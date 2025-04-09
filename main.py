@@ -1,6 +1,5 @@
-from fastapi import FastAPI, File, UploadFile, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks, Request
+from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 import uuid
 import os
@@ -9,15 +8,22 @@ import time
 
 app = FastAPI()
 
+RAPIDAPI_SECRET = os.getenv("RAPIDAPI_SECRET")
 
-# CORS config
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # For production: restrict to known origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+@app.middleware("http")
+async def enforce_rapidapi_usage(request: Request, call_next):
+    # Allow "/" and "/health" to work without the header
+    if request.url.path in ["/", "/health"]:
+        return await call_next(request)
+
+    rapidapi_proxy_secret = request.headers.get("X-RapidAPI-Proxy-Secret")
+
+    if rapidapi_proxy_secret != RAPIDAPI_SECRET:
+        return JSONResponse(status_code=403, content={"error": "Access restricted to RapidAPI users only."})
+
+    return await call_next(request)
+
 
 # Ensure filtered directory exists
 os.makedirs("filtered", exist_ok=True)
@@ -64,7 +70,29 @@ def delete_file_after_delay(path, delay=30):
         os.remove(path)
 
 
-# === API Endpoint ===
+# === API Endpoints ===
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+
+@app.get("/")
+def read_root():
+    welcome_message = (
+        "Welcome!"
+        "¡Bienvenido!"
+        "欢迎!"
+        "नमस्ते!"
+        "مرحبًا!"
+        "Olá!"
+        "Здравствуйте!"
+        "Bonjour!"
+        "বাংলা!"
+        "こんにちは!"
+    )
+    return {"message": welcome_message}
+
+
 @app.post("/custom-filter")
 async def custom_filter(
     uploaded_image: UploadFile = File(...),
